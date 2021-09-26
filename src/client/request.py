@@ -12,43 +12,42 @@ class ClientRequest:
         self.client = client
 
     def makeURL(self, path=None, qs=None):
-        
         url = "http://%s:%s/" % (self.client.host, self.client.port)
-
         if path != None:
             if isinstance(path, str):
                 url = "{}{}".format(url, path.strip('/'))
             if isinstance(path, list):
                 url = "{}{}".format(url, "/".join(path))
-
         if qs != None and isinstance(qs, dict):
             qs_items = []
             for i,j in qs.items():
                 qs_items.append("%s=%s" % (i,j))
 
             url += "/?" + "&".join(qs_items)
-
         return url
 
-    def handleResponse(self, response):
+    def handleResponse(self, request):
 
-        status = response.status_code
-        content_len = response.headers['Content-Length']
-        data = response.text
+        status = request.status_code
+        self.client.response_status = status
+        headers = request.headers
+        data = request.text
 
-        content_type = response.headers['Content-Type']
+        # print('Status:', status)
+        # print('Content:\n', data)
+        # print('--------------------')
+
+        content_type = headers['Content-Type']
         if content_type == 'application/json':
-            data = json.loads(data) # TODO: add error
-
+            data = json.loads(data)
             if 'client_data' in data.keys():
-                client_data = data['client_data']
-                for i,j in client_data.items():
+                # self.client.client_data = data['client_data']
+                for i,j in data['client_data'].items():
                     self.client.client_data[i] = j
-                    # setattr(self.client, i, j)
-
             if 'client_options' in data.keys():
-                self.client.client_options = data['client_options']
-
+                self.client.setClientOptions(data['client_options'])
+            else:
+                self.client.setClientOptions([])
             if 'message' in data.keys():
                 self.client.message = data['message']
             else:
@@ -62,5 +61,6 @@ class ClientRequest:
         if 'qs' in kwargs.keys():
             qs = kwargs['qs']
         url = self.makeURL(path, qs)
-        req = requests.get(url, headers={'Accept':'application/json'})
-        self.handleResponse(req)
+        
+        request = requests.get(url, headers={'Accept':'application/json'})
+        self.handleResponse(request)

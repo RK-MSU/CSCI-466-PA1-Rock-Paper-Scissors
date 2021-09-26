@@ -41,7 +41,7 @@ def runServer(port=8000):
     httpd.serve_forever()
 
 if __name__ == '__main__':
-    if os.path.exists(os.getcwd()+"/game-data.json"):
-        os.remove(os.getcwd()+"/game-data.json")
+    # if os.path.exists(os.getcwd()+"/game-data.json"):
+        # os.remove(os.getcwd()+"/game-data.json")
     os.system('clear')
     runServer()

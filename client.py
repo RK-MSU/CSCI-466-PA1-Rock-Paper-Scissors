@@ -7,18 +7,22 @@ class Client:
 
     playing_game = True
     user_input = None
+    message = None
     client_data = {}
     client_options = {}
-    message = None
+
+    client_request = None
+    response_status = None
+    response = None
+
 
     def __init__(self, host='localhost', port=8000):
         self.host = host
         self.port = port
-        self.client_req = ClientRequest(self)
-        self.client_req.get(path='new/player')
+        self.client_request = ClientRequest(self)
 
     def playGame(self):
-
+        self.client_request.get(path='new/player')
         while self.playing_game:
             self.prompt()
             self.user_input = input("('q' to quit) > ")
@@ -27,49 +31,42 @@ class Client:
             else:
                 self.handleUserInput()
 
+    def setClientOptions(self, options):
+        self.client_options = {}
+        options_count = 1
+        for option in options:
+            self.client_options[str(options_count)] = option
+            options_count += 1
+
     def prompt(self):
         os.system('clear')
+        # print("Client Data: ", self.client_data)
+        # print("Client Options: ", self.client_options)
 
-        print("Client Data: ", self.client_data)
-        print("Client Options: ", self.client_options)
-
-        if self.message != None:
-            print('\n%s' % (self.message))
-        for i, opt in enumerate(self.client_options): # TODO: error if 0 prompts
-            print("{} - {}".format(i+1, opt['prompt']))
+        print('{!s:->50}\n{!s:<10}{!s}'.format('', 'Status:', self.response_status))
+        print('{!s:->50}\n{!s}'.format('', self.message))
+        print("{!s:->50}".format(''))
+        for key, opt in self.client_options.items(): # TODO: error if 0 prompts
+            print("{!s:<2}{!s:^3}{!s}".format(key, '-', opt['prompt']))
         
     def handleUserInput(self): # TODO: much error validation needs to be done here
+        user_input = str(self.user_input)
+        user_input_arr = user_input.split(' ')
+        user_selection = user_input_arr[0]
 
-        user_i = str(self.user_input)
-        user_i_action = None
-
-        if len(user_i) == 0:
-            print('No input received')
+        if user_selection not in self.client_options:
+            # print("\nUser Input Selection Error\nUser Input:", user_selection,'\nClient Options:', self.client_options)
             return
+            
+        option_result = self.client_options[user_selection]
 
-        if len(user_i) == 1:
-            user_i = int(user_i)-1
-        elif ' ' in user_i:
-            space_index = user_i.index(' ')
-            user_i_action = user_i[space_index+1:]
-            user_i = int(user_i[0:space_index])
-        else:
-            print('Error')
-            return
-
-        # TODO: Error detection
-        option_result = self.client_options[user_i]
-        req_qs = self.client_data
-
-        if user_i_action != None:
-            req_qs['action_value'] = user_i_action
-
-        if 'qs' in option_result.keys():
-            req_qs = {**option_result['qs'], **req_qs}
-
-        self.client_req.get(path=option_result['uri'], qs=req_qs)
-
-
+        req_qs = {}
+        if 'qs' in option_result:
+            req_qs = {**req_qs, **option_result['qs']}
+            # for opt_qs_key, opt_qs_val in option_result['qs'].items():
+            #     qs[opt_qs_key]=opt_qs_val
+        req_qs = {**req_qs, **self.client_data}
+        self.client_request.get(path=option_result['uri'], qs=req_qs)
 
 if __name__ == '__main__':
     c = Client()
