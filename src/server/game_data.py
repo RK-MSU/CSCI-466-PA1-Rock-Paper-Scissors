@@ -420,8 +420,8 @@ class GameData:
         options = []
 
         # message += "{!s:.^50}".format(self.game['name'])
-        message += "\n{!s:^10}{!s:<10}".format("Round", "Winner")
         message += "\nResults:"
+        message += "\n{!s:^10}{!s:<10}".format("Round", "Winner")
         for round_id in self.game['rounds']:
             r = self.data['rounds'][round_id]
             if r['tie'] == True:

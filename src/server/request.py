@@ -31,33 +31,6 @@ def cleanQueryStringVars(vars):
         data[i]=j
     return data
 
-def getRoundWinnerPlayerId(round_plays):
-    player_one_id = list(round_plays.keys())[0]
-    player_one_play = round_plays[player_one_id]
-    player_two_id = list(round_plays.keys())[1]
-    player_two_play = round_plays[player_two_id]
-
-    if player_one_play == player_two_play:
-        return None
-
-    if player_one_play == 'rock':
-        if player_two_play == 'scissors':
-            return player_one_id
-        if player_two_play == 'paper':
-            return player_two_id
-    
-    if player_one_play == 'paper':
-        if player_two_play == 'rock':
-            return player_one_id
-        if player_two_play == 'scissors':
-            return player_two_id
-
-    if player_one_play == 'scissors':
-        if player_two_play == 'paper':
-            return player_one_id
-        if player_two_play == 'rock':
-            return player_two_id
-
 class ServerRequest:
 
     uri = ""
