@@ -159,6 +159,7 @@ class GameData:
             'round_limit': 3,
             'round_current': None,
             'rounds': [],
+            'reset_request': []
         }
         self.data['games'][self.game_id] = self.game
 
@@ -188,6 +189,8 @@ class GameData:
         }
         self.round['throws'].append(self.throw_id)
         self.data['throws'][self.throw_id] = self.throw
+        self.player['last_throw'] = self.throw_id
+        self._checkRoundWinner()
 
     def _checkRoundWinner(self):
 
@@ -222,20 +225,32 @@ class GameData:
                 continue
             if round['tie']:
                 continue
+
             round_winner = round['winner']
-            if round_winner in game_player_wins:
-                game_player_wins[round_winner] += 1
-            else:
-                game_player_wins[round_winner] = 1
+            if round_winner not in game_player_wins:
+                game_player_wins[round_winner] = 0
+            game_player_wins[round_winner] += 1
 
         rounds_to_win = int(self.game['round_limit']/2)
         for player_id, round_wins in game_player_wins.items():
             if round_wins > rounds_to_win:
                 self.game['winner'] = player_id
                 self.game['status'] = 'ended'
+                break
         
         if self.game['winner'] == None:
             self._newGameRound()
+
+    def _addLastThrowOption(self, options):
+        if self.player['last_throw'] != None:
+            options.append({
+                'prompt': 'Get last throw results',
+                'uri': 'game/throw-results',
+                'qs': {
+                    'last_throw': self.player['last_throw']
+                }
+            })
+        return options
 
     def newPlayer(self):
         self._newPlayer()
@@ -321,84 +336,77 @@ class GameData:
             'client_data': client_data,
             'client_options': options,
         }
-            
+
+    def _getGameOverResponse(self):
+        message = "GAME OVER - A victor has emerged."
+        if self.game['winner'] == self.player_id:
+            message += "\nYOU WON!"
+        else:
+            message += "\nYOU LOST!"
+        message += "\n{!s} won the game.".format(self.data['players'][self.game['winner']]['name'])
+        options = []
+        options.append(CLIENT_OPTIONS['game_status'])
+        options.append(CLIENT_OPTIONS['game_reset'])
+        return {
+            'message': message,
+            'client_options': options,
+        }
+
     def makeGameThrow(self):
 
+        # check if the game status is 'active', if not show end game
         if self.game['status'] == 'ended':
             self.request.response.setStatus(HTTPStatus.BAD_REQUEST)
-            message = "The game is over. A victor has emerged."
-            message += "\n{!s} won the game.".format(self.data['players'][self.game['winner']]['name'])
-            message += "\nView 'Game Stats' for more details."
-            options = []
-            options.append(CLIENT_OPTIONS['game_status'])
-            options.append(CLIENT_OPTIONS['game_reset'])
-            return {
-                'message': message,
-                'client_options': options,
-            }
+            return self._getGameOverResponse()
 
+        # check for valid number of players before making throw
         if len(self.game['players']) < 2:
             self.request.response.setStatus(HTTPStatus.BAD_REQUEST)
-            message = "Cannot make throw yet.\nPlease wait until the other player joins the game."
+            message = "ERROR: Please wait form the other player to join the game."
             options = [
-                CLIENT_OPTIONS['throw_play']
+                CLIENT_OPTIONS['throw_play'],
+                CLIENT_OPTIONS['game_status']
             ]
-            options.append(CLIENT_OPTIONS['game_status'])
             return {
                 'message': message,
                 'client_options': options,
             }
 
+        # check if player has already made throw this round
         for throw_id, throw in self.data['throws'].items():
             if throw['round_id'] != self.round_id:
                 continue
             if self.player_id == throw['player_id']:
                 self.request.response.setStatus(HTTPStatus.BAD_REQUEST)
-                message = "You have already made a throw this round.\nWait for the next round to make your next throw"
+                message = "ERROR: You have already thrown a play this round."
                 options = [
                     CLIENT_OPTIONS['throw_play']
                 ]
-                if self.player['last_throw'] != None:
-                    options.append({
-                        'prompt': 'Last throw results',
-                        'uri': 'game/throw-results',
-                        'qs': {
-                            'last_throw': self.player['last_throw']
-                        }
-                    })
+                options = self._addLastThrowOption(options)
                 options.append(CLIENT_OPTIONS['game_status'])
                 return {
                     'message': message,
                     'client_options': options,
                 }
 
-        # TODO: validation
         # check if client is trying to throw a new play
         player_throw = self.request.getQsVar('throw')
         if player_throw == None: # user wants to throw a play, needs client_options to do so
-            message = "Choose a play to throw:"
             return {
-                'message': message,
-                # 'client_data': client_data,
+                'message': "Choose a play to throw:",
                 'client_options': CLIENT_COMMON_PLAY_OPTIONS,
             }
 
         self._newThrow(player_throw)
-        self.player['last_throw'] = self.throw_id
-        self._checkRoundWinner()
+
+        # check if game is over
+        if self.game['status'] == 'ended':
+            return self._getGameOverResponse()
 
         options = [
             CLIENT_OPTIONS['throw_play']
         ]
-        if self.player['last_throw'] != None:
-            options.append({
-                'prompt': 'Last throw results',
-                'uri': 'game/throw-results',
-                'qs': {
-                    'last_throw': self.player['last_throw']
-                }
-            })    
-         # TODO: last throw results?
+        options = self._addLastThrowOption(options)
         options.append(CLIENT_OPTIONS['game_status'])
         return {
             'message': "You threw: {}".format(player_throw),
@@ -406,14 +414,18 @@ class GameData:
         }
 
     def getGameStatus(self):
-        message = ""
+        message = "{!s}\nStatus: {!s}".format(self.game['name'], self.game['status'])
+        if self.game['status'] == 'ended':
+            message += "\nWinner: {!s}".format(self.data['players'][self.game['winner']]['name'])
         options = []
 
-        message += "{!s:.^50}".format(self.game['name'])
+        # message += "{!s:.^50}".format(self.game['name'])
+        message += "\n{!s:^10}{!s:<10}".format("Round", "Winner")
+        message += "\nResults:"
         for round_id in self.game['rounds']:
             r = self.data['rounds'][round_id]
             if r['tie'] == True:
-                message += "\n{!s:<20}{!s}".format("Round {} Winner:".format(r['order']), "Tie")
+                message += "\n{!s:^10}{!s:<10}".format(r['order'], "Tie")
             else:
                 if r['winner'] != None:
                     winner_player = self.data['players'][r['winner']]
@@ -422,28 +434,29 @@ class GameData:
                         winner_name += " (You)"
                     else:
                         winner_name += " (Opponent)"
-                    message += "\n{!s:<20}{!s}".format("Round {} Winner:".format(r['order']), winner_name)
+                    message += "\n{!s:^10}{!s:<10}".format(r['order'], winner_name)
                 else:
-                    if len(r['throws']) < 2:
-                        message += "\n{!s:<20}{!s}".format("Round {} Winner:".format(r['order']), "In Progress")
-                    else:
-                        message += "\n{!s:<20}{!s}".format("Round {} Winner:".format(r['order']), r['winner'])
+                    message += "\n{!s:^10}{!s:<10}".format(r['order'], "In Progress")
             if self.game['round_current'] == r['id']:
                 if self.game['status'] == 'ended':
                     message += " (final)"
                 else:
                     message += " (current)"
-                
-        options.append(CLIENT_OPTIONS['throw_play'])
-        if self.player['last_throw'] != None:
-            options.append({
-                'prompt': 'Last throw results',
-                'uri': 'game/throw-results',
-                'qs': {
-                    'last_throw': self.player['last_throw']
-                }
-            })
+        
+
+
+        if self.game['status'] == 'active':
+            options.append(CLIENT_OPTIONS['throw_play'])
+            options = self._addLastThrowOption(options)
+        
         options.append(CLIENT_OPTIONS['game_status'])
+        if self.game['status'] == 'ended':
+            options.append(CLIENT_OPTIONS['game_reset'])
+            if len(self.game['reset_request']) > 0:
+                for pid in self.game['reset_request']:
+                    message += "\n{} has requested to reset the game.".format(self.data['players'][pid]['name'])
+
+
         return {
             'message': message,
             'client_options': options
@@ -487,33 +500,31 @@ class GameData:
             else:
                 round_winner += " (Opponent)"
 
-        message += "{!s:^50}\n".format("{} (ID: {})".format(game['name'], game['id']))
-        message += "{!s:.^50}\n".format("Throw Results")
-        message += "{!s:<10}{!s}\n".format('Round:', round['order'])
-        message += "{!s:<10}{!s}\n".format('Winner:', round_winner)
-        message += "{!s:<10}{!s}\n".format('Value:', throw['value'])
+        # message += "{!s:^50}\n".format("{} (ID: {})".format(game['name'], game['id']))
+        # message += "{!s:.^50}\n".format("Throw Results")
+        message += "{!s:<10}{!s}".format('Round:', round['order'])
+        message += "\n{!s:<10}{!s}".format('Winner:', round_winner)
+        message += "\n{!s:<10}{!s}".format('Value:', throw['value'])
         if opp_throw != None:
-            message += "{!s:<10}{!s}".format('Opponent:', opp_throw['value'])
+            message += "\n{!s:<10}{!s}".format('Opponent:', opp_throw['value'])
         else:
-            message += "{!s:<10}{!s}".format('Opponent:', "Has NOT gone yet")
+            message += "\n{!s:<10}{!s}".format('Opponent:', "Has NOT gone yet")
+        
         options = []
-        options.append(CLIENT_OPTIONS['throw_play'])
-        if self.player['last_throw'] != None:
-            options.append({
-                'prompt': 'Last throw results',
-                'uri': 'game/throw-results',
-                'qs': {
-                    'last_throw': self.player['last_throw']
-                }
-            })
+        if self.game['status'] != 'ended':
+            options.append(CLIENT_OPTIONS['throw_play'])
+            # options = self._addLastThrowOption(options)
         options.append(CLIENT_OPTIONS['game_status'])
+        if self.game['status'] == 'ended':
+            options.append(CLIENT_OPTIONS['game_reset'])
         return {
             'message': message,
             'client_options': options
         }
 
-    def resetGame(self):
+    def _resetGame(self):
         thows_id_arr = list(self.data['throws'].keys())
+        
         for throw_id in thows_id_arr:
             if self.data['throws'][throw_id]['game_id'] == self.game_id:
                 self.data['throws'].pop(throw_id)
@@ -529,6 +540,7 @@ class GameData:
             'round_limit': 3,
             'round_current': None,
             'rounds': [],
+            'reset_request': []
         }
 
         for pid in self.game['players']:
@@ -538,12 +550,25 @@ class GameData:
         self.game = {**self.game, **new_game_data}
         self._newGameRound()
 
-        options = [
-            CLIENT_OPTIONS['throw_play'],
-            CLIENT_OPTIONS['game_status']
-        ]
-        return {
-            'message': "Game has been reset!",
-            'client_options': options
-        }
+    def resetGame(self):
+        
+        if self.player_id not in self.game['reset_request']:
+            self.game['reset_request'].append(self.player_id)
+
+        if len(self.game['reset_request']) > 1:
+            self._resetGame()
+            options = [
+                CLIENT_OPTIONS['game_status'],
+            ]
+            return {
+                'message': "Game has been reset!",
+                'client_options': options
+            }
+        else:
+            return {
+                'message': "You have requested to reset the game.\nWaiting for other player to accept.",
+                'client_options': [
+                    CLIENT_OPTIONS['game_status']
+                ]
+            }
 

@@ -1,6 +1,7 @@
 # server
 
 import os
+import sys
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler
 from http.server import HTTPServer
@@ -41,7 +42,14 @@ def runServer(port=8000):
     httpd.serve_forever()
 
 if __name__ == '__main__':
-    # if os.path.exists(os.getcwd()+"/game-data.json"):
-        # os.remove(os.getcwd()+"/game-data.json")
+    if os.path.exists(os.getcwd()+"/game-data.json"):
+        os.remove(os.getcwd()+"/game-data.json")
     os.system('clear')
-    runServer()
+    
+    port = 8000
+    if len(sys.argv) > 1:
+        try:
+            port = int(sys.argv[1])
+        except:
+            print("Unable to get port")
+    runServer(port)

@@ -1,6 +1,7 @@
 # client
 
 import os
+import sys
 from src.client import ClientRequest
 
 class Client:
@@ -69,5 +70,11 @@ class Client:
         self.client_request.get(path=option_result['uri'], qs=req_qs)
 
 if __name__ == '__main__':
-    c = Client()
+    host = 'localhost'
+    port = 8000
+    if len(sys.argv) > 1:
+        host = str(sys.argv[1])
+    if len(sys.argv) > 2:
+        port = int(sys.argv[2])
+    c = Client(host, port)
     c.playGame()
